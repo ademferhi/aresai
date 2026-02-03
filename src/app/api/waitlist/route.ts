@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { google } from 'googleapis';
 
 export async function POST(request: Request) {
   try {
@@ -11,14 +10,31 @@ export async function POST(request: Request) {
     }
 
     if (!name || !company) {
-       return NextResponse.json({ error: 'INCOMPLETE_PROFILE' }, { status: 400 });
+      return NextResponse.json({ error: 'INCOMPLETE_PROFILE' }, { status: 400 });
     }
 
-    const filePath = path.join(process.cwd(), 'waitlist.txt');
-    const timestamp = new Date().toISOString();
-    const entry = `${timestamp} | NAME: ${name} | COMPANY: ${company} | EMAIL: ${email}\n`;
+    // Authenticate with Google Sheets
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+        private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    await fs.promises.appendFile(filePath, entry, 'utf8');
+    const sheets = google.sheets({ version: 'v4', auth });
+    const spreadsheetId = process.env.GOOGLE_SHEETS_ID; // Your Google Sheet ID
+    const timestamp = new Date().toISOString();
+
+    // Append row to Google Sheet
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Sheet1!A:D', // Adjust based on your sheet name and columns
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[timestamp, name, company, email]],
+      },
+    });
 
     return NextResponse.json({ success: true, message: 'ACCESS_GRANTED' });
   } catch (error) {
