@@ -7,7 +7,8 @@ import Image from "next/image";
 
 export default function LandingPage() {
   const [formData, setFormData] = useState({ name: "", company: "", email: "" });
-  const [status, setStatus] = useState<"IDLE" | "PROCESSING" | "GRANTED">("IDLE");
+  const [status, setStatus] = useState<"IDLE" | "PROCESSING" | "GRANTED" | "ERROR">("IDLE");
+  const [errorMessage, setErrorMessage] = useState("");
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, {
     stiffness: 100,
@@ -17,28 +18,104 @@ export default function LandingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.email && formData.name && formData.company) {
-      setStatus("PROCESSING");
-      try {
-        const res = await fetch('/api/waitlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        });
+    
+    // Validation
+    if (!formData.email || !formData.name || !formData.company) {
+      setErrorMessage("Please fill all fields");
+      setStatus("ERROR");
+      setTimeout(() => setStatus("IDLE"), 3000);
+      return;
+    }
+    
+    if (!formData.email.includes('@')) {
+      setErrorMessage("Please enter a valid email address");
+      setStatus("ERROR");
+      setTimeout(() => setStatus("IDLE"), 3000);
+      return;
+    }
+    
+    setStatus("PROCESSING");
+    setErrorMessage("");
+    console.log('🔄 Submitting form data:', formData);
+    
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          company: formData.company,
+          email: formData.email
+        }),
+      });
+      
+      console.log('📨 API Response status:', res.status);
+      
+      const data = await res.json();
+      console.log('📨 API Response data:', data);
+      
+      if (res.ok && data.success) {
+        console.log('✅ Success! Data saved to Google Sheets');
         
-        if (res.ok) {
-          setTimeout(() => {
-            setStatus("GRANTED");
-          }, 1000);
+        // Show success state
+        setTimeout(() => {
+          setStatus("GRANTED");
+        }, 1000);
+        
+        // Clear form after success
+        setTimeout(() => {
+          setFormData({ name: "", company: "", email: "" });
+        }, 3000);
+        
+      } else {
+        console.error('❌ API Error:', data.error);
+        
+        // Show error based on response
+        let errorMsg = 'Submission failed. Please try again.';
+        if (data.error === 'INVALID_CREDENTIALS') {
+          errorMsg = 'Please enter a valid email address.';
+        } else if (data.error === 'INCOMPLETE_PROFILE') {
+          errorMsg = 'Please fill in all fields.';
+        } else if (data.error === 'SYSTEM_FAILURE') {
+          errorMsg = 'Server error. Please try again later.';
         }
-      } catch (error) {
-        setStatus("IDLE");
+        
+        setErrorMessage(errorMsg);
+        setStatus("ERROR");
+        setTimeout(() => setStatus("IDLE"), 5000);
       }
+      
+    } catch (error) {
+      console.error('💥 Network error:', error);
+      setErrorMessage('Network error. Please check your connection and try again.');
+      setStatus("ERROR");
+      setTimeout(() => setStatus("IDLE"), 5000);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Clear error when user starts typing
+    if (status === "ERROR") {
+      setStatus("IDLE");
+      setErrorMessage("");
+    }
+  };
+
+  // Debug function - add this if needed
+  const testAPIConnection = async () => {
+    console.log('🔧 Testing API Connection...');
+    try {
+      const res = await fetch('/api/waitlist');
+      const data = await res.json();
+      console.log('📊 API Test Result:', data);
+      alert(`API connected! ${data.count || 0} entries found.`);
+    } catch (err) {
+      console.error('🔴 API Test Failed:', err);
+      alert('API connection failed. Check console for details.');
+    }
   };
 
   return (
@@ -55,7 +132,7 @@ export default function LandingPage() {
         <div className="cyber-grid" />
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-black via-transparent to-black pointer-events-none" />
         
-        {/* Floating Particles - Optimized: Removed animate-pulse and added transform-gpu */}
+        {/* Floating Particles */}
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-[100px] transform-gpu" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-[100px] transform-gpu" />
       </div>
@@ -189,6 +266,7 @@ export default function LandingPage() {
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:bg-white/10 focus:border-white/30 transition-all placeholder:text-gray-700"
                         placeholder="John Doe"
                         required
+                        disabled={status === "PROCESSING"}
                       />
                     </div>
 
@@ -202,6 +280,7 @@ export default function LandingPage() {
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:bg-white/10 focus:border-white/30 transition-all placeholder:text-gray-700"
                         placeholder="Acme Corp"
                         required
+                        disabled={status === "PROCESSING"}
                       />
                     </div>
 
@@ -215,16 +294,47 @@ export default function LandingPage() {
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:bg-white/10 focus:border-white/30 transition-all placeholder:text-gray-700"
                         placeholder="john@acme.com"
                         required
+                        disabled={status === "PROCESSING"}
                       />
                     </div>
+
+                    {status === "ERROR" && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-sm">
+                        ⚠️ {errorMessage}
+                      </div>
+                    )}
 
                     <button 
                       type="submit"
                       disabled={status === "PROCESSING"}
-                      className="w-full bg-white text-black font-bold py-4 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
+                      className={`w-full font-bold py-4 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:cursor-not-allowed ${
+                        status === "ERROR" 
+                          ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                          : "bg-white text-black hover:bg-gray-100"
+                      }`}
                     >
-                      {status === "PROCESSING" ? "Verifying..." : "Initialize Session"}
-                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      {status === "PROCESSING" ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          Verifying...
+                        </>
+                      ) : status === "ERROR" ? (
+                        "Try Again"
+                      ) : (
+                        <>
+                          Initialize Session
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+
+                    {/* Debug button - optional */}
+                    <button 
+                      type="button"
+                      onClick={testAPIConnection}
+                      className="text-xs text-gray-500 hover:text-white transition mt-2 text-center w-full"
+                    >
+                      Test API Connection
                     </button>
                   </form>
                 )}
@@ -237,6 +347,8 @@ export default function LandingPage() {
         {/* Footer */}
         <footer className="py-8 text-center text-xs text-gray-600 border-t border-white/5">
           <p>© 2026 ARES SECURITY. ALL RIGHTS RESERVED.</p>
+          {/* Debug info - remove in production */}
+          <p className="mt-2 text-gray-700">API: https://api.sheetbest.com/sheets/19402277-d48e-4cb3-b884-2689be966458</p>
         </footer>
 
       </main>
@@ -244,6 +356,7 @@ export default function LandingPage() {
   );
 }
 
+// Rest of your components remain the same...
 function TerminalPreview() {
   const [lines, setLines] = useState<string[]>([]);
   
@@ -266,14 +379,12 @@ function TerminalPreview() {
     let cumulativeDelay = 0;
 
     sequence.forEach((step) => {
-      // If it's a command, add the prompt line first
       if ('command' in step) {
         const timeout = setTimeout(() => {
           setLines(prev => [...prev, `CMD:${step.command}`]);
         }, step.delay);
         timeouts.push(timeout);
       } else {
-        // Output lines
         const timeout = setTimeout(() => {
           setLines(prev => [...prev, step.type ? `TYPE_${step.type}:${step.output}` : `OUT:${step.output}`]);
         }, step.delay);
@@ -286,7 +397,6 @@ function TerminalPreview() {
 
   return (
     <div className="w-full rounded-lg overflow-hidden bg-[#1a1b26] border border-[#2f334d] shadow-2xl font-mono text-xs sm:text-sm md:text-base">
-      {/* Kali-style Window Header */}
       <div className="bg-[#1f2335] px-3 py-2 flex items-center justify-between border-b border-[#1a1b26]">
         <div className="flex items-center gap-2">
            <TerminalIcon className="w-3 h-3 md:w-4 md:h-4 text-gray-400" />
@@ -299,9 +409,7 @@ function TerminalPreview() {
         </div>
       </div>
 
-      {/* Terminal Body */}
       <div className="p-6 h-[320px] text-left overflow-y-auto space-y-1 bg-[#0f0f14] scrollbar-hide">
-        {/* Banner */}
         <div className="text-blue-500 font-bold mb-4 opacity-80 text-[10px] leading-3 md:text-xs">
           <pre>{`
     _    ____  _____ ____  
@@ -346,7 +454,6 @@ function TerminalPreview() {
           );
         })}
         
-        {/* Active Cursor Prompt */}
         <div className="mt-2">
           <span className="text-blue-400 font-bold">┌──(</span>
           <span className="text-red-500 font-bold">root💀ares</span>
@@ -366,7 +473,6 @@ function TerminalPreview() {
   );
 }
 
-// Reveal Component
 function ScrollReveal({ children, delay = 0 }: { children: React.ReactNode, delay?: number }) {
   return (
     <motion.div
